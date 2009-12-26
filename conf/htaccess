@@ -1,0 +1,3 @@
+RewriteEngine On
+
+RewriteRule ^/(.*)$ http://localhost/~breese/mt/twitter.cgi/$1 [L,P,QSA]

@@ -1,0 +1,13 @@
+id: TwitterAPI
+key: TwitterAPI
+name: Twitter API
+description: Provides support for the Twitter API.
+plugin_author: Byrne Reese
+
+config_settings:
+  TwitterAPIScript:
+    default: twitter.cgi
+
+applications:
+  twitter_api:
+    handler: 'Melody::API::Twitter'
