@@ -51,10 +51,11 @@ sub handle {
         my ($subapp, $method, $format) = ( $pi =~ /^([^\/]*)\/([^\.]*)\.(.*)$/ );
         $logger->debug( "Sub app: $subapp, method: $method, format: $format" );
         $app->{param} = {};
-        my @args;
-        for my $arg (@args) {
+        my $args = {};
+        for my $arg (split(';',$app->query_string)) {
             my($k, $v) = split(/=/, $arg, 2);
             $app->{param}{$k} = $v;
+            $args->{$k} = $v;
         }
         if (my $class = $SUBAPPS->{$subapp}) {
             eval "require $class;";
@@ -67,12 +68,13 @@ sub handle {
             $logger->debug( "It looks like app can process $method" );
             # Authentication should be defered to the designated handler since not
             # all methods require auth.
-            $out = $app->$method();
+            use Data::Dumper;
+            $logger->debug("Calling $method with args: " . Dumper($args) );
+            $out = $app->$method($args);
         } else {
             $logger->debug( "Drat, app can't process $method" );
         }
         $logger->debug( 'Returning: ' . $out );
-#        my $out = $app->handle_request;
         return unless defined $out;
         my $out_enc;
         if (lc($format) eq 'json') {
@@ -82,7 +84,7 @@ sub handle {
             $app->set_header('Content-type','text/xml');
             require XML::Simple;
             my $xml = XML::Simple->new;
-            $out_enc = $xml->XMLout( $out, NoAttr => 1, KeepRoot => 1 );
+            $out_enc = $xml->XMLout( $out, NoAttr => 1, KeepRoot => 1, GroupTags => { statuses => 'status' } );
         } else {
             # TODO - respond with indication that it is unsupported format
             return $app->error(500, 'Unsupported format: ' . $format);
@@ -111,6 +113,7 @@ sub handle_request {
 sub authenticate {
     my $app = shift;
     # TODO - remove short circuit
+    $logger->debug( 'Authenticating... for now, true.' );
     return 1;
     if (my $auth_header = $app->get_header('Authorization')) {
         $logger->debug( 'Authorization header present: '.$auth_header );
