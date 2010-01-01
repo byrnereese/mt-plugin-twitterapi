@@ -3,7 +3,7 @@ key: TwitterAPI
 name: Twitter API
 description: Provides support for the Twitter API.
 plugin_author: Byrne Reese
-schema_version: 1
+schema_version: 1.1
 
 config_settings:
   TwitterAPIScript:
@@ -15,3 +15,8 @@ applications:
 
 object_types:
     tw_favorite: Melody::Favorite
+    tw_follower: Melody::Follower
+
+callbacks:
+  MT::Entry::post_remove: Melody::API::Twitter::Callbacks::entry_post_remove
+  MT::Author::post_remove: Melody::API::Twitter::Callbacks::author_post_remove

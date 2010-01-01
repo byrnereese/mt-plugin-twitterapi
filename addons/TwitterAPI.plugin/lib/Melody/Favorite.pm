@@ -17,8 +17,6 @@ __PACKAGE__->install_properties({
         },        
     },
     defaults => {
-        comment_count => 0,
-        ping_count => 0,
     },
     audit => 1,
     datasource => 'tw_favorites',
