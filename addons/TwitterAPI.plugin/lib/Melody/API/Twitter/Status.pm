@@ -1,7 +1,8 @@
 package Melody::API::Twitter::Status;
 
 use base qw( Melody::API::Twitter );
-use Melody::API::Twitter::Util qw( serialize_author twitter_date truncate_tweet serialize_entries is_number );
+use Melody::API::Twitter::Util
+  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number );
 
 ###########################################################################
 
@@ -24,21 +25,21 @@ Response: An array statuses.
 =cut
 
 sub public_timeline {
-    my $app = shift;
-    my ($params) = @_; # this method takes no input
-    my $terms = {};
-    my $args = {
-        sort_by => 'created_on',
+    my $app      = shift;
+    my ($params) = @_;      # this method takes no input
+    my $terms    = {};
+    my $args     = {
+        sort_by   => 'created_on',
         direction => 'descend',
     };
-    my $iter = MT->model('entry')->load_iter($terms,$args); # load everything
+    my $iter = MT->model('entry')->load_iter( $terms, $args ); # load everything
     my @entries;
     my $n = 20;
     my $i = 0;
-    ENTRY: while (my $e = $iter->()) {
-      push @entries, $e;
-      $i++;
-      $iter->end, last if $n && $i >= $n;
+  ENTRY: while ( my $e = $iter->() ) {
+        push @entries, $e;
+        $i++;
+        $iter->end, last if $n && $i >= $n;
     }
     my $statusus;
     $statuses = serialize_entries( \@entries );
@@ -96,36 +97,40 @@ sub home_timeline {
     my $app = shift;
     return unless $app->SUPER::authenticate();
     my ($params) = @_;
-    my $terms = {};
-    my $args = {
-        sort_by => 'created_on',
+    my $terms    = {};
+    my $args     = {
+        sort_by   => 'created_on',
         direction => 'descend',
     };
-    my $n = 20;
+    my $n    = 20;
     my $page = 1;
-    if ($params->{count} && is_number($params->{count}) && $params->{count} <= 200) {
+    if (   $params->{count}
+        && is_number( $params->{count} )
+        && $params->{count} <= 200 )
+    {
         $n = $params->{count};
     }
-    if ($params->{max_id}) {
+    if ( $params->{max_id} ) {
         $terms->{id} = { '<=' => $params->{max_id} };
     }
-    if ($params->{since_id}) {
+    if ( $params->{since_id} ) {
         $terms->{id} = { '>' => $params->{since_id} };
     }
-    if ($params->{page} && is_number($params->{page})) {
+    if ( $params->{page} && is_number( $params->{page} ) ) {
         $page = $params->{page};
     }
     $args->{limit} = $n;
-    $args->{offset} = ($n * ($page - 1)) if $page > 1;
+    $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
 
-    my $iter = MT->model('entry')->load_iter($terms,$args); # load everything
+    my $iter = MT->model('entry')->load_iter( $terms, $args ); # load everything
     my @entries;
 
     my $i = 0;
-    ENTRY: while (my $e = $iter->()) {
-      push @entries, $e;
-      $i++;
-#      $iter->end, last if $n && $i >= $n;
+  ENTRY: while ( my $e = $iter->() ) {
+        push @entries, $e;
+        $i++;
+
+        #      $iter->end, last if $n && $i >= $n;
     }
     my $statusus;
     $statuses = serialize_entries( \@entries );
@@ -197,57 +202,67 @@ You will only be able to access the latest 3200 statuses from a user's timeline 
 
 sub user_timeline {
     my $app = shift;
-    # TODO - do not authenticate all the time
-    # TODO - two auth methods: force_auth (with redirect) and just plain get auth info
+
+# TODO - do not authenticate all the time
+# TODO - two auth methods: force_auth (with redirect) and just plain get auth info
     return unless $app->SUPER::authenticate();
     my ($params) = @_;
-    my $terms = {};
-    my $args = {
-        sort_by => 'created_on',
+    my $terms    = {};
+    my $args     = {
+        sort_by   => 'created_on',
         direction => 'descend',
     };
 
     # Validate input
-    if (!$params->{user_id} && !$params->{screen_name}) {
+    if ( !$params->{user_id} && !$params->{screen_name} ) {
+
         # TODO - authenticate and set current context to current user
     }
 
-    my $n = 20;
+    my $n    = 20;
     my $page = 1;
-    if ($params->{count} && is_number($params->{count}) && $params->{count} <= 200) {
+    if (   $params->{count}
+        && is_number( $params->{count} )
+        && $params->{count} <= 200 )
+    {
         $n = $params->{count};
     }
-    if ($params->{user_id}) {
+    if ( $params->{user_id} ) {
+
         # TODO - check to see if user exists
         $terms->{author_id} = $params->{user_id};
     }
-    if ($params->{screen_name}) {
+    if ( $params->{screen_name} ) {
         my $join_str = '=entry_author_id';
-        $args->{join} = MT->model('author')->join_on(undef, {
-            'id' => \$join_str,
-            'name' => $params->{screen_name},
-        });
+        $args->{join} = MT->model('author')->join_on(
+            undef,
+            {
+                'id'   => \$join_str,
+                'name' => $params->{screen_name},
+            }
+        );
     }
-    if ($params->{max_id}) {
+    if ( $params->{max_id} ) {
         $terms->{id} = { '<=' => $params->{max_id} };
     }
-    if ($params->{since_id}) {
+    if ( $params->{since_id} ) {
         $terms->{id} = { '>' => $params->{since_id} };
     }
-    if ($params->{page} && is_number($params->{page})) {
+    if ( $params->{page} && is_number( $params->{page} ) ) {
         $page = $params->{page};
     }
     $args->{limit} = $n;
-    $args->{offset} = ($n * ($page - 1)) if $page > 1;
+    $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
 
-    my $iter = MT->model('entry')->load_iter($terms,$args); # load everything
+    my $iter = MT->model('entry')->load_iter( $terms, $args ); # load everything
     my @entries;
 
     my $i = 0;
-    ENTRY: while (my $e = $iter->()) {
-      push @entries, $e;
-      $i++;
-#      $iter->end, last if $n && $i >= $n;
+  ENTRY: while ( my $e = $iter->() ) {
+        push @entries, $e;
+        $i++;
+
+        #      $iter->end, last if $n && $i >= $n;
     }
     my $statusus;
     $statuses = serialize_entries( \@entries );
@@ -309,17 +324,19 @@ Required.  The numerical ID of the status to retrieve.
 
 sub show {
     my $app = shift;
-# TODO - auth only if post is protected
-#    return unless $app->SUPER::authenticate();
+
+    # TODO - auth only if post is protected
+    #    return unless $app->SUPER::authenticate();
     my ($params) = @_;
     my $id;
-    if ($params->{id} && is_number($params->{id})) {
+    if ( $params->{id} && is_number( $params->{id} ) ) {
         $id = $params->{id};
-    } else {
-        return $app->error(404, 'No status message specified.');
     }
-    my $e = MT->model('entry')->load($id); # load everything
-    my $statuses = serialize_entries( [ $e ] );
+    else {
+        return $app->error( 404, 'No status message specified.' );
+    }
+    my $e = MT->model('entry')->load($id);      # load everything
+    my $statuses = serialize_entries( [$e] );
     return { status => @$statuses[0] };
 }
 
@@ -420,36 +437,40 @@ providing a method to remove geotags from individual tweets.
 
 sub update {
     my $app = shift;
-    my ($params) = @_; # this method takes no input
+    my ($params) = @_;    # this method takes no input
 
     return unless $app->SUPER::authenticate();
 
-    my ($msg,$in_reply_to);
-    if ($app->request_method ne 'POST') {
+    my ( $msg, $in_reply_to );
+    if ( $app->request_method ne 'POST' ) {
+
         # TODO - reject request
     }
-    if ($params->{status}) {
+    if ( $params->{status} ) {
         $msg = $params->{status};
-    } else {
-        return $app->error(500, 'No status message provided.');
     }
-    if ($params->{in_reply_to_status_id}) {
+    else {
+        return $app->error( 500, 'No status message provided.' );
+    }
+    if ( $params->{in_reply_to_status_id} ) {
         $in_reply_to = $params->{in_reply_to_status_id};
     }
-    # TODO perform dupe check: retrieve last update, compare text, return 403 if same
+
+# TODO perform dupe check: retrieve last update, compare text, return 403 if same
     my $truncated;
-    ($truncated,$msg) = truncate_tweet( $msg );
+    ( $truncated, $msg ) = truncate_tweet($msg);
 
     print STDERR "Saving tweet: $msg";
     my $e = MT->model('entry')->new;
     $e->title($msg);
     $e->author_id( $app->user->id );
     $e->status( MT->model('entry')->RELEASE() );
+
     # TODO - the blog id must not be static
-    $e->blog_id( 5 );
+    $e->blog_id(5);
     $e->save;
     print STDERR "Tweet saved with id: " . $e->id;
-    my $statuses = serialize_entries( [ $e ] );
+    my $statuses = serialize_entries( [$e] );
     return { status => @$statuses[0] };
 }
 

@@ -1,7 +1,8 @@
 package Melody::API::Twitter::Friends;
 
 use base qw( Melody::API::Twitter );
-use Melody::API::Twitter::Util qw( serialize_author twitter_date truncate_tweet serialize_entries is_number );
+use Melody::API::Twitter::Util
+  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number );
 
 ###########################################################################
 
