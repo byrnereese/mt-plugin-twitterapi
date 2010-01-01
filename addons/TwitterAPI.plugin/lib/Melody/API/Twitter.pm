@@ -39,6 +39,7 @@ our $SUBAPPS = {
     'direct_messages' => 'Melody::API::Twitter::DirectMessage',
     'users' => 'Melody::API::Twitter::User',
     'account' => 'Melody::API::Twitter::Account',
+    'favorites' => 'Melody::API::Twitter::Favorites',
     'help' => 'Melody::API::Twitter::Help',
 };
 
@@ -48,21 +49,37 @@ sub handle {
     my $out = eval {
         (my $pi = $app->path_info) =~ s!^/!!;
         $logger->debug( 'Path info: ' . $pi );
-        my ($subapp, $method, $format) = ( $pi =~ /^([^\/]*)\/([^\.]*)\.(.*)$/ );
-        $logger->debug( "Sub app: $subapp, method: $method, format: $format" );
         $app->{param} = {};
+
+        my ($subapp, $method, $id, $format);
+
+        if ( ($subapp, $method, $id, $format) = ( $pi =~ /^([^\/]*)\/([^\/]*)\/([^\.]*)\.(.*)$/ ) ) {
+            $logger->debug( "Sub app: $subapp, method: $method, id: $id, format: $format" );
+        } elsif ( ($subapp, $method, $format) = ( $pi =~ /^([^\/]*)\/([^\.]*)\.(.*)$/ ) ) {
+            $logger->debug( "Sub app: $subapp, method: $method, format: $format" );
+        } elsif ( ($subapp, $format) = ( $pi =~ /^([^\.]*)\.(.*)$/ ) ) {
+            $method = $subapp;
+            $logger->debug( "Sub app: $subapp, method: $method, format: $format" );
+        } else {
+            $logger->debug( "Unrecognized query format." );
+            # TODO - bail
+        }
+        $app->mode($method);
+
         my $args = {};
         for my $arg (split(';',$app->query_string)) {
             my($k, $v) = split(/=/, $arg, 2);
             $app->{param}{$k} = $v;
             $args->{$k} = $v;
         }
+        if ($id) {
+            $args->{id} = $id;
+        }
         if (my $class = $SUBAPPS->{$subapp}) {
             eval "require $class;";
             bless $app, $class;
             $logger->debug( 'Reblessed app as ' . ref $app );
         }
-        $app->mode($method);
         my $out;
         if ($app->can($method)) {
             $logger->debug( "It looks like app can process $method" );
@@ -74,17 +91,22 @@ sub handle {
         } else {
             $logger->debug( "Drat, app can't process $method" );
         }
+        if ($app->{_errstr}) {
+            $logger->debug( 'There was an error processing the request.' );
+            return;
+        }
         $logger->debug( 'Returning: ' . $out );
         return unless defined $out;
         my $out_enc;
         if (lc($format) eq 'json') {
-            $app->set_header('Content-type','application/json');
+            $app->response_content_type('application/json');
             $out_enc = MT::Util::to_json( $out );
         } elsif (lc($format) eq 'xml') {
-            $app->set_header('Content-type','text/xml');
+            $app->response_content_type('text/xml');
             require XML::Simple;
             my $xml = XML::Simple->new;
-            $out_enc = $xml->XMLout( $out, NoAttr => 1, KeepRoot => 1, GroupTags => { statuses => 'status' } );
+            $out_enc = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+            $out_enc .= $xml->XMLout( $out, NoAttr => 1, KeepRoot => 1, GroupTags => { statuses => 'status' } );
         } else {
             # TODO - respond with indication that it is unsupported format
             return $app->error(500, 'Unsupported format: ' . $format);
@@ -100,58 +122,56 @@ sub handle {
     return $out;
 }
 
-sub handle_request {
+sub get_auth_info {
     my $app = shift;
+    my %param;
 
-    # TODO dispatch to Twitter API Class
-    my $method = $app->mode;
-    if ($method eq 'testfoo') {
-        return 'foo';
+    my $auth_header = $app->get_header('Authorization')
+        or return undef;
+
+    $logger->debug( 'Authorization header present: '.$auth_header );
+    my ($type, $creds_enc) = split(" ",$auth_header);
+    if (lc($type) eq 'basic') {
+        require MIME::Base64;
+        my $creds = MIME::Base64::decode_base64( $creds_enc );
+        my ($username, $password) = split(':',$creds);
+        $logger->debug( 'Username: '.$username );
+        $logger->debug( 'Password (encoded): '.$password );
+        
+        # Lookup user record
+        my $user = MT::Author->load({ name => $username, type => 1 })
+            or return $app->auth_failure(403, 'Invalid login');
+        $param{username} = $user->name;
+        $app->user( $user );
+        
+        # Make sure use has an API Password set
+        return $app->auth_failure(403, 'Invalid login. API Password not set.')
+            unless $user->api_password;
+        
+        # Make sure user is active
+        return $app->auth_failure(403, 'Invalid login. User is not active.')
+            unless $user->is_active;
+        
+        # Check to see if passwords match
+        return $app->auth_failure(403, 'Invalid login. Password mismatch.') 
+            unless $user->api_password eq $password;
+        
+    } else {
+        # Unsupported auth type
+        # TODO: return unsupported
     }
+
+    \%param;
 }
 
 sub authenticate {
     my $app = shift;
-    # TODO - remove short circuit
-    $logger->debug( 'Authenticating... for now, true.' );
-    return 1;
-    if (my $auth_header = $app->get_header('Authorization')) {
-        $logger->debug( 'Authorization header present: '.$auth_header );
-        my ($type, $creds_enc) = split(" ",$auth_header);
-        if (lc($type) eq 'basic') {
-            require MIME::Base64;
-            my $creds = MIME::Base64::decode_base64( $creds_enc );
-            my ($username, $password) = split(':',$creds);
-            $logger->debug( 'Username: '.$username );
-            $logger->debug( 'Password (encoded): '.$password );
 
-            # Lookup user record
-            my $user = MT::Author->load({ name => $username, type => 1 })
-                or return $app->auth_failure(403, 'Invalid login');
+    $logger->debug( 'Attempting to authenticate user...' );
 
-            # Make sure use has an API Password set
-            return $app->auth_failure(403, 'Invalid login. API Password not set.')
-                unless $user->api_password;
+    my $auth = $app->get_auth_info
+        or return $app->auth_failure(401, "Unauthorized");
 
-            # Make sure user is active
-            return $app->auth_failure(403, 'Invalid login. User is not active.')
-                unless $user->is_active;
-
-            # Check to see if passwords match
-            return $app->auth_failure(403, 'Invalid login. Password mismatch.') 
-                unless $user->api_password eq $password;
-
-        } else {
-            # Unsupported auth type
-            # TODO: return unsupported
-        }
-    } else {
-        $logger->debug( 'User needs to authenticate!' );
-        $app->set_header('WWW-Authenticate','Basic realm="TwitterAPI"');
-        return $app->error(401, "Authenticate"); 
-    }
-
-    $app->authenticate or return;
 #    if (my $blog_id = $app->{param}{blog_id}) {
 #        $app->{blog} = MT->model('blog')->load($blog_id)
 #            or return $app->error(400, "Invalid blog ID '$blog_id'");
@@ -169,51 +189,56 @@ sub authenticate {
 #            blog_id => $app->{blog}->id });
 #        return $app->error(403, "Permission denied.") unless $perms && $perms->can_create_post;
 #    }
+
     1;
 }
 
+sub auth_failure {
+    my $app = shift;
+    $logger->debug("There was an auth failure...");
+    $app->set_header('WWW-Authenticate', 'Basic realm="api.localhost"');
+    return $app->error(@_,1);
+}
+
+=head2
+
+This is what a Twitter Error looks like in XML.
+
+<?xml version="1.0" encoding="UTF-8"?>
+<hash>
+  <request>/direct_messages/destroy/456.xml</request>
+  <error>No direct message with that ID found.</error>
+</hash>
+
+=cut 
+
 sub error {
     my $app = shift;
-    my($code, $msg) = @_;
+    my($code, $msg, $dont_send_body) = @_;
+    $logger->debug("Processing error $code with message: $msg");
     return unless ref($app);
     if ($code && $msg) {
-        chomp($msg = encode_xml($msg));
         $app->response_code($code);
         $app->response_message($msg);
-        $app->response_content_type('text/xml');
-        $app->response_content("<error>$msg</error>");
+        $app->{_errstr} = $msg;
     }
     elsif ($code) {
         return $app->SUPER::error($code);
     }
-    return undef;
+    return undef if $dont_send_body;
+    return {
+        request => $app->path_info,
+        error   => $msg,
+    };
 }
 
 sub show_error {
     my $app = shift;
     my($err) = @_;
     chomp($err = encode_xml($err));
-    if ($app->{is_soap}) {
-        my $code = $app->response_code;
-        if ($code >= 400) {
-            $app->response_code(500);
-            $app->response_message($err);
-        }
-        return <<FAULT;
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <soap:Fault>
-      <faultcode>$code</faultcode>
-      <faultstring>$err</faultstring>
-    </soap:Fault>
-  </soap:Body>
-</soap:Envelope>
-FAULT
-    } else {
-        return <<ERR;
+    return <<ERR;
 <error>$err</error>
 ERR
-    }
 }
 
 =head2 search
