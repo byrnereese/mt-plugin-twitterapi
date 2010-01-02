@@ -34,21 +34,20 @@ fully implemented or not.
 * statuses/retweeted_to_me - 0%
 * statuses/retweets_of_me - 0%
  
-## Status Methods - 60%
+## Status Methods - 70%
 
 * statuses/show - 100%
 * statuses/update - 100%
 * statuses/destroy - 100%
-
 * statuses/retweet - 0%
 * statuses/retweets - 0%
+* statuses/friends - 90%
+* statuses/followers - 90%
  
-## User Methods - 40%
+## User Methods - 50%
 
 * users/show 
 * users/search
-* statuses/friends - 90%
-* statuses/followers - 90%
  
 ## List Methods - 0%
 
