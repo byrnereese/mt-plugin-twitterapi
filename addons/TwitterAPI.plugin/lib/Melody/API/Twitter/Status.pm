@@ -2,7 +2,7 @@ package Melody::API::Twitter::Status;
 
 use base qw( Melody::API::Twitter );
 use Melody::API::Twitter::Util
-  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number );
+  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number load_friends load_followers latest_status );
 
 ###########################################################################
 
@@ -40,7 +40,7 @@ sub public_timeline {
         push @entries, $e;
         $i++;
         $iter->end, last if $n && $i >= $n;
-    }
+0    }
     my $statusus;
     $statuses = serialize_entries( \@entries );
     return { statuses => { status => $statuses } };
@@ -121,6 +121,11 @@ sub home_timeline {
     }
     $args->{limit} = $n;
     $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
+
+    my $friends = load_friends( $app->user );
+    $friends{ $app->user->id } = $app->user;
+    my @friends_ids = keys %$friends;
+    $terms->{author_id} = \@friends_ids;
 
     my $iter = MT->model('entry')->load_iter( $terms, $args ); # load everything
     my @entries;
@@ -273,6 +278,54 @@ sub user_timeline {
 
 =head2 statuses/friends_timeline
 =cut
+
+sub friends_timeline {
+    my $app = shift;
+    return unless $app->SUPER::authenticate();
+    my ($params) = @_;
+    my $terms    = {};
+    my $args     = {
+        sort_by   => 'created_on',
+        direction => 'descend',
+    };
+    my $n    = 20;
+    my $page = 1;
+    if (   $params->{count}
+        && is_number( $params->{count} )
+        && $params->{count} <= 200 )
+    {
+        $n = $params->{count};
+    }
+    if ( $params->{max_id} ) {
+        $terms->{id} = { '<=' => $params->{max_id} };
+    }
+    if ( $params->{since_id} ) {
+        $terms->{id} = { '>' => $params->{since_id} };
+    }
+    if ( $params->{page} && is_number( $params->{page} ) ) {
+        $page = $params->{page};
+    }
+    $args->{limit} = $n;
+    $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
+
+    my $friends = load_friends( $app->user );
+    my @friends_ids = keys %$friends;
+    $terms->{author_id} = \@friends_ids;
+
+    my $iter = MT->model('entry')->load_iter( $terms, $args ); # load everything
+    my @entries;
+
+    my $i = 0;
+  ENTRY: while ( my $e = $iter->() ) {
+        push @entries, $e;
+        $i++;
+
+        #      $iter->end, last if $n && $i >= $n;
+    }
+    my $statusus;
+    $statuses = serialize_entries( \@entries );
+    return { statuses => { status => $statuses } };
+}
 
 ###########################################################################
 
@@ -490,6 +543,170 @@ sub update {
 =cut
 
 ###########################################################################
+
+=head2 statuses/friends
+
+Returns a user's friends, each with current status inline. They are ordered 
+by the order in which the user followed them, most recently followed first, 
+100 at a time. (Please note that the result set isn't guaranteed to be 100 
+every time as suspended users will be filtered out.) Use the cursor option 
+to access older friends. With no user specified, request defaults to the 
+authenticated user's friends. It's also possible to request another user's 
+friends list via the id, screen_name or user_id parameter.
+  
+URL: http://twitter.com/statuses/friends.format
+ 
+Formats: xml, json
+ 
+HTTP Method(s): GET
+ 
+Requires Authentication: false unless requesting it from a protected user; if 
+getting this data of a protected user, you must auth (and be allowed to see that user).
+ 
+API rate limited: 1 call per request
+ 
+B<Parameters:>
+
+=over 4
+
+=item id
+
+Optional.  The ID or screen name of the user for whom to request a list of friends. 
+
+=item user_id
+
+Optional.  Specfies the ID of the user for whom to return the list of friends. 
+Helpful for disambiguating when a valid user ID is also a valid screen name.
+
+=item screen_name
+
+Optional.  Specfies the screen name of the user for whom to return the list of friends. 
+Helpful for disambiguating when a valid screen name is also a user ID.
+
+=item cursor
+
+Optional. Breaks the results into pages. A single page contains 100 users. This is 
+recommended for users who are following many users. Provide a value of  -1 to begin 
+paging. Provide values as returned to in the response body's next_cursor and 
+previous_cursor attributes to page back and forth in the list.
+
+=back
+
+=cut
+
+sub friends {
+    my $app = shift;
+    return unless $app->SUPER::authenticate();
+
+    my ($params) = @_;
+    my $terms    = {};
+    my $args     = {
+        sort_by   => 'created_on',
+        direction => 'descend',
+    };
+    my $n    = 100;
+    my $page = 1;
+    my $cursor = 0;
+    if ( $params->{cursor} ) {
+# TODO - implement cursor
+        $cursor = $params->{cursor};
+    }
+    $args->{limit} = $n;
+    $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
+
+    my $friends = load_friends( $app->user );
+    my @friends_ids = keys %$friends;
+    $terms->{id} = \@friends_ids;
+
+    my $iter = MT->model('author')->load_iter( $terms, $args ); # load everything
+    my @users;
+
+    my $hash;
+    my $i = 0;
+  ENTRY: while ( my $u = $iter->() ) {
+        push @users, $u;
+        my $uh = serialize_author($u);
+        my $latest = latest_status( $u );
+        if ($latest) {
+            $uh->{status} = serialize_entries( [ $latest ] )->[0];
+            delete %$uh->{status}->{user};
+        }
+        push @{$hash->{users}->{user}}, $uh;
+        $i++;
+        #      $iter->end, last if $n && $i >= $n;
+    }
+    if ( $cursor ) {
+        # TODO - fully implement cursor
+        return {
+            users_list => {
+                users => $hash,
+                next_cursor => '',
+                previous_cursor => '',
+            },
+        };
+    } 
+    return $hash;
+}
+
+###########################################################################
+
+=head2 statuses/followers
+
+=cut 
+
+sub followers {
+    my $app = shift;
+    return unless $app->SUPER::authenticate();
+
+    my ($params) = @_;
+    my $terms    = {};
+    my $args     = {
+        sort_by   => 'created_on',
+        direction => 'descend',
+    };
+    my $n    = 100;
+    my $page = 1;
+    my $cursor = 0;
+    if ( $params->{cursor} ) {
+# TODO - implement cursor
+        $cursor = $params->{cursor};
+    }
+    $args->{limit} = $n;
+    $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
+
+    my $followers = load_followers( $app->user );
+    my @followers_ids = keys %$followers;
+    $terms->{id} = \@followers_ids;
+
+    my $iter = MT->model('author')->load_iter( $terms, $args ); # load everything
+    my @users;
+
+    my $hash;
+    my $i = 0;
+  ENTRY: while ( my $u = $iter->() ) {
+        push @users, $u;
+        my $uh = serialize_author($u);
+        my $latest = latest_status( $u );
+        if ($latest) {
+            $uh->{status} = serialize_entries( [ $latest ] )->[0];
+            delete %$uh->{status}->{user};
+        }
+        push @{$hash->{users}->{user}}, $uh;
+        $i++;
+        #      $iter->end, last if $n && $i >= $n;
+    }
+    if ( $cursor ) {
+        # TODO - fully implement cursor
+        return {
+            users_list => {
+                users => $hash,
+                next_cursor => '',
+                previous_cursor => '',
+            },
+        };
+    } 
+    return $hash;
+}
 
 1;
 __END__

@@ -41,6 +41,7 @@ our $SUBAPPS = {
     'users'           => 'Melody::API::Twitter::User',
     'account'         => 'Melody::API::Twitter::Account',
     'favorites'       => 'Melody::API::Twitter::Favorites',
+    'friendships'     => 'Melody::API::Twitter::Friends',
     'help'            => 'Melody::API::Twitter::Help',
 };
 
