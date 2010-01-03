@@ -7,40 +7,49 @@ use MT::Util qw( format_ts );
 use MT::I18N qw( length_text substr_text );
 
 our @EXPORT_OK =
-  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number load_friends load_followers latest_status );
+  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number load_friends load_followers latest_status mark_favorites );
 
 sub latest_status {
     my ($user) = @_;
-    return MT->model('entry')->load( { author_id => $user->id,
-                                       status => 2 },
-                                     { sort_by => 'created_on',
-                                       direction => 'descend',
-                                       limit => 1 } );
+    return MT->model('entry')->load(
+        {
+            author_id => $user->id,
+            status    => 2
+        },
+        {
+            sort_by   => 'created_on',
+            direction => 'descend',
+            limit     => 1
+        }
+    );
 }
 
 sub load_friends {
     my ($user) = @_;
-    my @following =
-      MT->model('tw_follower')
-      ->load(
+    my @following = MT->model('tw_follower')->load(
         { follower_id => $user->id },
-        { sort_by => 'created_on',
-          direction => 'descend' } );
+        {
+            sort_by   => 'created_on',
+            direction => 'descend'
+        }
+    );
+
     # TODO - the hash does not preserve order!!! Doh.
     my %hash = ();
     %hash = map { $_->followee_id => $_ } @following;
     return \%hash;
 }
 
-
 sub load_followers {
     my ($user) = @_;
-    my @followers =
-      MT->model('tw_follower')
-      ->load(
+    my @followers = MT->model('tw_follower')->load(
         { followee_id => $user->id },
-        { sort_by => 'created_on',
-          direction => 'descend' } );
+        {
+            sort_by   => 'created_on',
+            direction => 'descend'
+        }
+    );
+
     # TODO - the hash does not preserve order!!! Doh.
     my %hash = ();
     %hash = map { $_->follower_id => $_ } @followers;
@@ -71,8 +80,10 @@ sub is_number {
 sub serialize_entries {
     my ($entries) = @_;
     my $statuses = [];
+    my @ids;
     foreach my $e (@$entries) {
         my ( $trunc, $txt ) = truncate_tweet( $e->text );
+        push @ids,       $e->id;
         push @$statuses, {
             created_at => twitter_date( $e->created_on ),
             id         => $e->id,
@@ -89,6 +100,26 @@ sub serialize_entries {
         };
     }
     return $statuses;
+}
+
+sub mark_favorites {
+    my ( $statuses, $user ) = @_;
+    my @ids;
+    foreach my $e (@$statuses) {
+        push @ids, $e->{id};
+    }
+    my @favs = MT->model('tw_favorite')->load(
+        {
+            obj_type  => 'entry',
+            author_id => $user->id,
+            obj_id    => \@ids
+        }
+    );
+    foreach my $f (@favs) {
+        map {
+            if ( $f->obj_id == $_->{id} ) { $_->{favorited} = 'true' }
+        } @$statuses;
+    }
 }
 
 sub serialize_author {

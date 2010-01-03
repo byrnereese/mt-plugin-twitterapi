@@ -35,7 +35,7 @@ sub verify_credentials {
     return unless $app->SUPER::authenticate();
 
     my $user = $app->user;
-    return { user => serialize_author( $user ) };
+    return { user => serialize_author($user) };
 
 }
 

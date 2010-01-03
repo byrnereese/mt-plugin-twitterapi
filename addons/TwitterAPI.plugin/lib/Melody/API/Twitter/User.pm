@@ -62,7 +62,8 @@ sub show {
         $id = $params->{user_id};
     }
     if ( $params->{screen_name} ) {
-        my $user = MT->model('author')->load( { name => $params->{screen_name} } );
+        my $user =
+          MT->model('author')->load( { name => $params->{screen_name} } );
         $id = $user->id if $user;
     }
 
@@ -70,10 +71,10 @@ sub show {
     unless ($u) {
         return $app->error( 404, 'User not found.' );
     }
-    my $uh = serialize_author( $u );
-    my $latest = latest_status( $u );
+    my $uh     = serialize_author($u);
+    my $latest = latest_status($u);
     if ($latest) {
-        $uh->{status} = serialize_entries( [ $latest ] )->[0];
+        $uh->{status} = serialize_entries( [$latest] )->[0];
         delete %$uh->{status}->{user};
     }
 

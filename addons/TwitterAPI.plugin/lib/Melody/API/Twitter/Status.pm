@@ -2,7 +2,7 @@ package Melody::API::Twitter::Status;
 
 use base qw( Melody::API::Twitter );
 use Melody::API::Twitter::Util
-  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number load_friends load_followers latest_status );
+  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number load_friends load_followers latest_status mark_favorites );
 
 ###########################################################################
 
@@ -40,7 +40,7 @@ sub public_timeline {
         push @entries, $e;
         $i++;
         $iter->end, last if $n && $i >= $n;
-0    }
+    }
     my $statusus;
     $statuses = serialize_entries( \@entries );
     return { statuses => { status => $statuses } };
@@ -139,6 +139,7 @@ sub home_timeline {
     }
     my $statusus;
     $statuses = serialize_entries( \@entries );
+    mark_favorites( $statuses, $app->user );
     return { statuses => { status => $statuses } };
 }
 
@@ -308,7 +309,7 @@ sub friends_timeline {
     $args->{limit} = $n;
     $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
 
-    my $friends = load_friends( $app->user );
+    my $friends     = load_friends( $app->user );
     my @friends_ids = keys %$friends;
     $terms->{author_id} = \@friends_ids;
 
@@ -604,47 +605,51 @@ sub friends {
         sort_by   => 'created_on',
         direction => 'descend',
     };
-    my $n    = 100;
-    my $page = 1;
+    my $n      = 100;
+    my $page   = 1;
     my $cursor = 0;
     if ( $params->{cursor} ) {
-# TODO - implement cursor
+
+        # TODO - implement cursor
         $cursor = $params->{cursor};
     }
     $args->{limit} = $n;
     $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
 
-    my $friends = load_friends( $app->user );
+    my $friends     = load_friends( $app->user );
     my @friends_ids = keys %$friends;
     $terms->{id} = \@friends_ids;
 
-    my $iter = MT->model('author')->load_iter( $terms, $args ); # load everything
+    my $iter =
+      MT->model('author')->load_iter( $terms, $args );    # load everything
     my @users;
 
     my $hash;
     my $i = 0;
   ENTRY: while ( my $u = $iter->() ) {
         push @users, $u;
-        my $uh = serialize_author($u);
-        my $latest = latest_status( $u );
+        my $uh     = serialize_author($u);
+        my $latest = latest_status($u);
         if ($latest) {
-            $uh->{status} = serialize_entries( [ $latest ] )->[0];
+            $uh->{status} = serialize_entries( [$latest] )->[0];
             delete %$uh->{status}->{user};
         }
-        push @{$hash->{users}->{user}}, $uh;
+        push @{ $hash->{users}->{user} }, $uh;
         $i++;
+
         #      $iter->end, last if $n && $i >= $n;
     }
-    if ( $cursor ) {
+    if ($cursor) {
+
         # TODO - fully implement cursor
         return {
             users_list => {
-                users => $hash,
-                next_cursor => '',
+                users           => $hash,
+                next_cursor     => '',
                 previous_cursor => '',
             },
         };
-    } 
+    }
     return $hash;
 }
 
@@ -664,47 +669,51 @@ sub followers {
         sort_by   => 'created_on',
         direction => 'descend',
     };
-    my $n    = 100;
-    my $page = 1;
+    my $n      = 100;
+    my $page   = 1;
     my $cursor = 0;
     if ( $params->{cursor} ) {
-# TODO - implement cursor
+
+        # TODO - implement cursor
         $cursor = $params->{cursor};
     }
     $args->{limit} = $n;
     $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
 
-    my $followers = load_followers( $app->user );
+    my $followers     = load_followers( $app->user );
     my @followers_ids = keys %$followers;
     $terms->{id} = \@followers_ids;
 
-    my $iter = MT->model('author')->load_iter( $terms, $args ); # load everything
+    my $iter =
+      MT->model('author')->load_iter( $terms, $args );    # load everything
     my @users;
 
     my $hash;
     my $i = 0;
   ENTRY: while ( my $u = $iter->() ) {
         push @users, $u;
-        my $uh = serialize_author($u);
-        my $latest = latest_status( $u );
+        my $uh     = serialize_author($u);
+        my $latest = latest_status($u);
         if ($latest) {
-            $uh->{status} = serialize_entries( [ $latest ] )->[0];
+            $uh->{status} = serialize_entries( [$latest] )->[0];
             delete %$uh->{status}->{user};
         }
-        push @{$hash->{users}->{user}}, $uh;
+        push @{ $hash->{users}->{user} }, $uh;
         $i++;
+
         #      $iter->end, last if $n && $i >= $n;
     }
-    if ( $cursor ) {
+    if ($cursor) {
+
         # TODO - fully implement cursor
         return {
             users_list => {
-                users => $hash,
-                next_cursor => '',
+                users           => $hash,
+                next_cursor     => '',
                 previous_cursor => '',
             },
         };
-    } 
+    }
     return $hash;
 }
 

@@ -39,14 +39,14 @@ fully implemented or not.
 * statuses/show - 100%
 * statuses/update - 100%
 * statuses/destroy - 100%
-* statuses/retweet - 0%
-* statuses/retweets - 0%
 * statuses/friends - 90%
 * statuses/followers - 90%
+* statuses/retweet - 0%
+* statuses/retweets - 0%
  
 ## User Methods - 50%
 
-* users/show 
+* users/show - 100%
 * users/search
  
 ## List Methods - 0%
@@ -93,7 +93,7 @@ fully implemented or not.
 * friends/ids   
 * followers/ids 
  
-## Account Methods - 0%
+## Account Methods - 10%
 
 * account/verify_credentials - 100%
 * account/rate_limit_status

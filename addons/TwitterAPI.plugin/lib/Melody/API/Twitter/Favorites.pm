@@ -150,6 +150,7 @@ sub create {
 
     # TODO - this needs to accurately show favorite status
     my $statuses = serialize_entries( [$e] );
+    $statuses->[0]->{favorited} = 'true';
     return { status => @$statuses[0] };
 }
 
