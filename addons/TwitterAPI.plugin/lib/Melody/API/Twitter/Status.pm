@@ -495,7 +495,7 @@ sub update {
 
     return unless $app->SUPER::authenticate();
 
-    my ( $msg, $in_reply_to );
+    my ( $msg, $in_reply_to, $lat, $long );
     if ( $app->request_method ne 'POST' ) {
 
         # TODO - reject request
@@ -508,6 +508,24 @@ sub update {
     }
     if ( $params->{in_reply_to_status_id} ) {
         $in_reply_to = $params->{in_reply_to_status_id};
+    }
+    if ( $params->{lat} ) {
+        $lat = $params->{lat};
+        unless ( $lat <= 90 && $lat >= -90 ) {
+            return $app->error( 500,
+                'Invalid range for latitude. Must be between 90.0 and -90.0.' );
+        }
+    }
+    if ( $params->{long} ) {
+        $long = $params->{long};
+        unless ( $long <= 180 && $long >= -180 ) {
+            return $app->error( 500,
+                'Invalid range for longitude. Must be between 180.0 and -180.0.'
+            );
+        }
+    }
+    if ( $lat xor $long ) {
+        return $app->error( 500, 'Must provide latitude and longitude.' );
     }
 
 # TODO perform dupe check: retrieve last update, compare text, return 403 if same
@@ -522,6 +540,12 @@ sub update {
 
     # TODO - the blog id must not be static
     $e->blog_id(5);
+
+    if ( $lat && $long ) {
+        $e->geo_latitude($lat);
+        $e->geo_longitude($long);
+    }
+
     $e->save;
     print STDERR "Tweet saved with id: " . $e->id;
     my $statuses = serialize_entries( [$e] );
