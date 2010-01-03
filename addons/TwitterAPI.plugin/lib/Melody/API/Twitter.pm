@@ -5,14 +5,13 @@ use strict;
 use MT;
 use MT::Util qw( encode_xml format_ts );
 use MT::I18N qw( length_text substr_text );
+use Melody::API::Twitter::Util qw( hack_geo );
 use base qw( MT::App );
 
-my ($HAVE_XML_PARSER);
-
-BEGIN {
-    eval { require XML::Parser };
-    $HAVE_XML_PARSER = $@ ? 0 : 1;
-}
+use constant {
+    AUTH_REQUIRED => 1,
+    AUTH_OPTIONAL => 0,
+};
 
 use MT::Log::Log4perl qw( l4mtdump );
 use Log::Log4perl qw( :resurrect );
@@ -47,7 +46,8 @@ our $SUBAPPS = {
 
 sub handle {
     my $app = shift;
-    $logger->debug('Entering "handle"...');
+
+    #$logger->debug('Entering "handle"...');
     my $out = eval {
         ( my $pi = $app->path_info ) =~ s!^/!!;
         $logger->debug( 'Path info: ' . $pi );
@@ -91,11 +91,13 @@ sub handle {
         if ( my $class = $SUBAPPS->{$subapp} ) {
             eval "require $class;";
             bless $app, $class;
-            $logger->debug( 'Reblessed app as ' . ref $app );
+
+            #$logger->debug( 'Reblessed app as ' . ref $app );
         }
         my $out;
         if ( $app->can($method) ) {
-            $logger->debug("It looks like app can process $method");
+
+            #$logger->debug("It looks like app can process $method");
 
           # Authentication should be defered to the designated handler since not
           # all methods require auth.
@@ -136,6 +138,7 @@ sub handle {
             $app->show_error("Internal Error");
             return;
         }
+        hack_geo( \$out_enc, $format );
         return $out_enc;
     };
     if ( my $e = $@ ) {
@@ -158,8 +161,9 @@ sub get_auth_info {
         require MIME::Base64;
         my $creds = MIME::Base64::decode_base64($creds_enc);
         my ( $username, $password ) = split( ':', $creds );
-        $logger->debug( 'Username: ' . $username );
-        $logger->debug( 'Password (encoded): ' . $password );
+
+        #$logger->debug( 'Username: ' . $username );
+        #$logger->debug( 'Password (encoded): ' . $password );
 
         # Lookup user record
         my $user = MT::Author->load( { name => $username, type => 1 } )
@@ -191,36 +195,22 @@ sub get_auth_info {
 
 sub authenticate {
     my $app = shift;
-
+    my ($mode) = @_;
     $logger->debug('Attempting to authenticate user...');
-
-    my $auth = $app->get_auth_info
-      or return $app->auth_failure( 401, "Unauthorized" );
-
-#    if (my $blog_id = $app->{param}{blog_id}) {
-#        $app->{blog} = MT->model('blog')->load($blog_id)
-#            or return $app->error(400, "Invalid blog ID '$blog_id'");
-#        $app->{user}
-#        or return $app->error(403, "Authenticate");
-#        if ($app->{user}->is_superuser()) {
-#            $app->{perms} = MT->model('permission')->new;
-#            $app->{perms}->blog_id($blog_id);
-#            $app->{perms}->author_id($app->{user}->id);
-#            $app->{perms}->can_administer_blog(1);
-#            return 1;
-#        }
-#        my $perms = $app->{perms} = MT->model('permission')->load({
-#            author_id => $app->{user}->id,
-#            blog_id => $app->{blog}->id });
-#        return $app->error(403, "Permission denied.") unless $perms && $perms->can_create_post;
-#    }
-
-    1;
+    my $auth;
+    if ( $mode == AUTH_REQUIRED ) {
+        $auth = $app->get_auth_info
+          or return $app->auth_failure( 401, "Unauthorized" );
+    }
+    elsif ( $mode == AUTH_OPTIONAL ) {
+        $auth = $app->get_auth_info
+          or return 0;
+    }
+    return 1;
 }
 
 sub auth_failure {
     my $app = shift;
-    $logger->debug("There was an auth failure...");
     $app->set_header( 'WWW-Authenticate', 'Basic realm="api.localhost"' );
     return $app->error( @_, 1 );
 }

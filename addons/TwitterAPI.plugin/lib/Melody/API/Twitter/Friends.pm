@@ -78,12 +78,14 @@ sub create {
         }
     }
     if ( $params->{user_id} && is_number( $params->{user_id} ) ) {
-        $followee = $user->id;
+        $followee = $params->{user_id};
     }
     if ( $params->{screen_name} ) {
-        my $user = MT->model('author')->load( { name => $params->{id} } );
+        my $user =
+          MT->model('author')->load( { name => $params->{screen_name} } );
         unless ($user) {
-            return $app->error( 404, 'User ' . $params->{id} . ' not found.' );
+            return $app->error( 404,
+                'User ' . $params->{screen_name} . ' not found.' );
         }
         $followee = $user->id;
     }

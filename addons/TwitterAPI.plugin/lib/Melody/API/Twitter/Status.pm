@@ -95,7 +95,7 @@ Optional. Specifies the page of results to retrieve. Note: there are pagination 
 
 sub home_timeline {
     my $app = shift;
-    return unless $app->SUPER::authenticate();
+    return unless $app->SUPER::authenticate(AUTH_REQUIRED);
     my ($params) = @_;
     my $terms    = {};
     my $args     = {
@@ -207,22 +207,20 @@ You will only be able to access the latest 3200 statuses from a user's timeline 
 =cut
 
 sub user_timeline {
-    my $app = shift;
-
-# TODO - do not authenticate all the time
-# TODO - two auth methods: force_auth (with redirect) and just plain get auth info
-    return unless $app->SUPER::authenticate();
-    my ($params) = @_;
-    my $terms    = {};
-    my $args     = {
+    my $app       = shift;
+    my $is_authed = $app->SUPER::authenticate(AUTH_OPTIONAL);
+    my ($params)  = @_;
+    my $terms     = {};
+    my $args      = {
         sort_by   => 'created_on',
         direction => 'descend',
     };
 
     # Validate input
-    if ( !$params->{user_id} && !$params->{screen_name} ) {
+    if ( !$params->{user_id} && !$params->{screen_name} && $is_authed ) {
 
         # TODO - authenticate and set current context to current user
+        $params->{user_id} = $app->user->id;
     }
 
     my $n    = 20;
@@ -234,10 +232,14 @@ sub user_timeline {
         $n = $params->{count};
     }
     if ( $params->{user_id} ) {
-
-        # TODO - check to see if user exists
+        my $user = MT->model('author')->load( { name => $params->{user_id} } );
+        unless ($user) {
+            return $app->error( 404,
+                'User ' . $params->{user_id} . ' not found.' );
+        }
         $terms->{author_id} = $params->{user_id};
     }
+
     if ( $params->{screen_name} ) {
         my $join_str = '=entry_author_id';
         $args->{join} = MT->model('author')->join_on(
@@ -493,7 +495,7 @@ sub update {
     my $app = shift;
     my ($params) = @_;    # this method takes no input
 
-    return unless $app->SUPER::authenticate();
+    return unless $app->SUPER::authenticate(AUTH_REQUIRED);
 
     my ( $msg, $in_reply_to, $lat, $long );
     if ( $app->request_method ne 'POST' ) {
@@ -556,6 +558,22 @@ sub update {
 
 =head2 statuses/destroy  
 =cut
+
+sub destroy {
+    my $app = shift;
+    my ($params) = @_;    # this method takes no input
+    return unless $app->SUPER::authenticate(AUTH_REQUIRED);
+
+    my $id = $params->{id};
+    my $e  = MT->model('entry')->load($id);
+    unless ($e) {
+        return $app->error( 404, 'Status message ' . $id . ' not found.' );
+    }
+    if ( $e->author_id == $app->user->id ) {
+        $e->remove;
+    }
+    return { status => serialize_entries( [$e] ) };
+}
 
 ###########################################################################
 
@@ -621,7 +639,45 @@ previous_cursor attributes to page back and forth in the list.
 
 sub friends {
     my $app = shift;
-    return unless $app->SUPER::authenticate();
+    my ($params) = @_;    # this method takes no input
+
+    my $is_authed = $app->SUPER::authenticate(AUTH_OPTIONAL);
+
+    my $id;
+    if ( $params->{id} ) {
+        if ( is_number( $params->{id} ) ) {
+            $id = $params->{id};
+        }
+        else {
+            my $user = MT->model('author')->load( { name => $params->{id} } );
+            unless ($user) {
+                return $app->error( 404,
+                    'User ' . $params->{id} . ' not found.' );
+            }
+            $id = $user->id;
+        }
+    }
+    if ( $params->{user_id} && is_number( $params->{user_id} ) ) {
+        $id = $params->{user_id};
+    }
+    if ( $params->{screen_name} ) {
+        my $user =
+          MT->model('author')->load( { name => $params->{screen_name} } );
+        unless ($user) {
+            return $app->error( 404,
+                'User ' . $params->{screen_name} . ' not found.' );
+        }
+        $id = $user->id;
+    }
+    unless ($id) {
+        if ($is_authed) {
+            $id = $app->user->id;
+        }
+        else {
+            return $app->SUPER::auth_failure( 403,
+                "No user's timeline specified." );
+        }
+    }
 
     my ($params) = @_;
     my $terms    = {};
@@ -640,7 +696,10 @@ sub friends {
     $args->{limit} = $n;
     $args->{offset} = ( $n * ( $page - 1 ) ) if $page > 1;
 
-    my $friends     = load_friends( $app->user );
+    my $friends = load_friends($id);
+    unless ($friends) {
+        return { users => undef };
+    }
     my @friends_ids = keys %$friends;
     $terms->{id} = \@friends_ids;
 

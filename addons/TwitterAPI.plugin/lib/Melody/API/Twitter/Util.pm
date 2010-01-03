@@ -7,7 +7,29 @@ use MT::Util qw( format_ts );
 use MT::I18N qw( length_text substr_text );
 
 our @EXPORT_OK =
-  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number load_friends load_followers latest_status mark_favorites );
+  qw( serialize_author twitter_date truncate_tweet serialize_entries is_number load_friends load_followers latest_status mark_favorites hack_geo );
+
+sub hack_geo {
+    my ( $ref, $format ) = @_;
+    if ( $format eq 'json' ) {
+
+        # "geo":"50 90"
+        # "geo": {
+        #   "type":"Point",
+        #   "coordinates":[37.78029, -122.39697]
+        # }
+        $$ref =~
+s/"geo":"([^ ]*) ([^\"]*)"/"geo":\{"type":"Point","coordinates":[$1, $2]\}/gm;
+    }
+    elsif ( $format eq 'xml' ) {
+
+        # <geo xmlns:georss="http://www.georss.org/georss">
+        #   <georss:point>37.78029 -122.39697</georss:point>
+        # </geo>
+        $$ref =~
+s/<geo>([^ ]*) ([^\>]*)<\/geo>/<geo xmlns:georss=\"http:\/\/www.georss.org\/georss\"><georss:point>$1 $2<\/georss:point><\/geo>/gm;
+    }
+}
 
 sub latest_status {
     my ($user) = @_;
@@ -26,6 +48,9 @@ sub latest_status {
 
 sub load_friends {
     my ($user) = @_;
+    unless ( ref $user eq 'MT::Author' ) {
+        $user = MT->model('author')->load($user);
+    }
     my @following = MT->model('tw_follower')->load(
         { follower_id => $user->id },
         {
@@ -33,10 +58,17 @@ sub load_friends {
             direction => 'descend'
         }
     );
+    unless (@following) {
+        print STDERR "This person is not following anyone.";
+        return;
+    }
 
     # TODO - the hash does not preserve order!!! Doh.
     my %hash = ();
     %hash = map { $_->followee_id => $_ } @following;
+
+    use Data::Dumper;
+    print STDERR "friends hash: " . Dumper(%hash);
     return \%hash;
 }
 
@@ -83,8 +115,8 @@ sub serialize_entries {
     my @ids;
     foreach my $e (@$entries) {
         my ( $trunc, $txt ) = truncate_tweet( $e->text );
-        push @ids,       $e->id;
-        push @$statuses, {
+        push @ids, $e->id;
+        my $ser = {
             created_at => twitter_date( $e->created_on ),
             id         => $e->id,
             text       => $txt,
@@ -98,6 +130,10 @@ sub serialize_entries {
             user                    => serialize_author( $e->author ),
             geo                     => undef,
         };
+        if ( $e->geo_latitude && $e->geo_longitude ) {
+            $ser->{geo} = $e->geo_latitude . " " . $e->geo_longitude;
+        }
+        push @$statuses, $ser;
     }
     return $statuses;
 }
